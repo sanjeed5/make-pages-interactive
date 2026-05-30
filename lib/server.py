@@ -1,14 +1,14 @@
 """
-Tiny single-file server for the Claude Feedback library.
+Tiny single-file server for the in-page feedback library.
 
 Serves a directory of HTML artifacts AND accepts comment-batch submissions from
 the in-page library. Submissions are appended to <artifact>/feedback/inbox.jsonl
-where Claude (the agent) can pick them up, process them, and append to
+where the coding agent can pick them up, process them, and append to
 <artifact>/feedback/history.json. The page polls history.json to detect new
 changes and offer a walkthrough.
 
 Usage:
-    python lib/server.py <artifact_dir> [--port 5050]
+    python lib/server.py <artifact_dir> [--port 5050] [--bind 127.0.0.1]
 
 There are NO dependencies beyond the Python standard library.
 """
@@ -30,7 +30,7 @@ from urllib.parse import urlparse
 LIB_DIR = Path(__file__).resolve().parent
 
 # ---------- Auto-shutdown bookkeeping ----------
-# Servers launched as Claude Code background tasks would otherwise outlive the
+# Servers launched as agent background tasks would otherwise outlive the
 # session (orphaned to launchd/init) and accumulate. Two complementary checks:
 #   1. parent-death — if our parent process exits, we get reparented to PID 1.
 #      Skip this watchdog if we were already detached at startup (e.g. nohup).
@@ -77,13 +77,10 @@ class FeedbackHandler(http.server.SimpleHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
         self.send_header("Pragma", "no-cache")
         self.send_header("Expires", "0")
-        self.send_header("Access-Control-Allow-Origin", "*")
         super().end_headers()
 
     def do_OPTIONS(self):
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
 
     def guess_type(self, path):
@@ -94,7 +91,7 @@ class FeedbackHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         if parsed.path == "/info":
-            # Diagnostic endpoint: lets other Claude Code sessions detect what
+            # Diagnostic endpoint: lets other agent sessions detect what
             # this server is serving so they know whether to reuse or take over.
             info = {
                 "artifact_dir": str(self.artifact_dir),
@@ -203,6 +200,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("artifact_dir", help="directory containing the HTML artifact")
     ap.add_argument("--port", type=int, default=5050)
+    ap.add_argument("--bind", default="127.0.0.1", help="address to bind")
     ap.add_argument("--idle-timeout", type=int, default=600,
                     help="exit if no client requests for this many seconds (0 = disable). Default 600 (10 min).")
     args = ap.parse_args()
@@ -234,25 +232,26 @@ def main():
         daemon_threads = True
 
     try:
-        srv = ReuseTCP(("", args.port), FeedbackHandler)
+        srv = ReuseTCP((args.bind, args.port), FeedbackHandler)
     except OSError as e:
-        print(f"[server] FATAL: port {args.port} is unavailable ({e}).")
-        print(f"[server]  - check what's running there:  curl -s http://localhost:{args.port}/info")
+        print(f"[server] FATAL: port {args.port} on {args.bind} is unavailable ({e}).")
+        print(f"[server]  - check what's running there:  curl -s http://127.0.0.1:{args.port}/info")
         print(f"[server]  - or kill it:                  lsof -ti:{args.port} | xargs kill")
         print(f"[server]  - or run me on a different port: --port {args.port + 1}")
         sys.exit(1)
 
-    # Auto-shutdown so servers don't accumulate across Claude Code sessions.
+    # Auto-shutdown so servers don't accumulate across agent sessions.
     threading.Thread(
         target=_watchdog, args=(args.idle_timeout,), daemon=True
     ).start()
 
     with srv:
         print(f"[server] serving {artifact_dir}")
-        print(f"[server] open http://localhost:{args.port}/sample.html")
+        display_host = "127.0.0.1" if args.bind == "0.0.0.0" else args.bind
+        print(f"[server] open http://{display_host}:{args.port}/")
         print(f"[server] inbox:   {inbox}")
         print(f"[server] history: {history}")
-        print(f"[server] info:    http://localhost:{args.port}/info")
+        print(f"[server] info:    http://{display_host}:{args.port}/info")
         if args.idle_timeout > 0:
             print(f"[server] auto-shutdown: parent-death OR {args.idle_timeout}s idle (no requests). --idle-timeout 0 to disable")
         else:

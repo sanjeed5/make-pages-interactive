@@ -1,5 +1,5 @@
 """
-Inject (or remove) the Claude Feedback library tags in every *.html file in a
+Inject (or remove) the page feedback library tags in every *.html file in a
 directory. Also creates feedback/inbox.jsonl and feedback/history.json so the
 server has somewhere to write.
 

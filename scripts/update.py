@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 SKILL_DIR = Path(__file__).resolve().parent.parent
-REPO_URL = "https://github.com/paraschopra/make-pages-interactive"
+REPO_URL = "https://github.com/sanjeed5/make-pages-interactive"
 
 
 def main() -> int:

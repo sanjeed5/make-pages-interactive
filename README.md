@@ -1,6 +1,6 @@
 # make-pages-interactive
 
-A Claude Code skill that turns any folder of static HTML pages into a **live commenting surface**. Highlight text, click an element, leave a note — the comment lands in a local inbox that Claude reads and responds to by editing the page. The page auto-reloads with a walkthrough of what changed.
+Turn any folder of static HTML pages into a live commenting surface. Works with **Cursor**, **Claude Code**, **Codex**, and other terminal agents.
 
 Originally built for iterating on research artifacts (long HTML reports with plots, tables, explanations) but works for any folder of HTML: docs, design mocks, generated reports, prototype UIs.
 
@@ -24,10 +24,10 @@ Originally built for iterating on research artifacts (long HTML reports with plo
                                           ┌───────────▼────────────┐
                                           │  feedback/inbox.jsonl  │
                                           └───────────┬────────────┘
-                                                      │ Monitor
+                                                      │ watch (same session)
                                                       ▼
                                           ┌────────────────────────┐
-                                          │  Claude (the agent)    │
+                                          │  Coding agent          │
                                           │  edits HTML, appends   │
                                           │  feedback/history.json │
                                           └────────────────────────┘
@@ -39,14 +39,16 @@ The skill is **just three pieces**:
 |------|------|
 | `lib/feedback.js` | Client library injected into every page. Handles text selection, element selection, comment editor, page-reload walkthrough. |
 | `lib/feedback.css` | Styles for the comment UI. |
-| `lib/server.py` | ~250-line stdlib-only HTTP server. Serves the page directory, accepts comment POSTs, serves the lib/ files from `/lib/*`. Auto-shuts-down on parent death or 10 min of idle so it doesn't leak processes. |
+| `lib/server.py` | ~250-line stdlib-only HTTP server. Serves the page directory, accepts comment POSTs, serves the lib/ files from `/lib/*`. Binds to loopback by default. Auto-shuts-down on parent death or 10 min of idle. |
 
 Plus glue:
 
 | File | Role |
 |------|------|
-| `SKILL.md` | What Claude Code reads to know when and how to invoke the skill. |
+| `SKILL.md` | Agent-facing spec (setup, watch inbox, process feedback). |
 | `scripts/inject.py` | Idempotently injects (or removes) the two `<link>`/`<script>` tags in every `*.html` in a directory. |
+| `scripts/watch-inbox.sh` | Portable inbox watcher (`fswatch` or poll) for agents without a native file monitor. |
+| `scripts/skill_root.py` | Prints the skill install path. |
 | `scripts/update.py` | `git pull --ff-only` inside the skill directory. |
 
 ---
@@ -54,90 +56,86 @@ Plus glue:
 ## Install
 
 ```bash
-git clone https://github.com/paraschopra/make-pages-interactive \
-  ~/.claude/skills/make-pages-interactive
+git clone https://github.com/sanjeed5/make-pages-interactive \
+  ~/.agents/skills/make-pages-interactive
 ```
 
-That's it. Claude Code auto-discovers any folder under `~/.claude/skills/` that contains a `SKILL.md`.
-
-Updates are explicit:
+Agents that discover skills from `~/.agents/skills/` (Cursor, Codex, etc.) pick it up automatically. For Claude Code, symlink if needed:
 
 ```bash
-python ~/.claude/skills/make-pages-interactive/scripts/update.py
+ln -s ~/.agents/skills/make-pages-interactive ~/.claude/skills/make-pages-interactive
 ```
 
-Or just say "update the make-pages-interactive skill" in Claude Code.
+Updates:
+
+```bash
+python ~/.agents/skills/make-pages-interactive/scripts/update.py
+```
+
+Or ask your agent to "update the make-pages-interactive skill".
 
 ---
 
 ## Usage
 
-Inside any Claude Code session, say:
+In any agent session, say:
 
 > "Make these pages interactive."
 
-(or any of: "make this page interactive", "let me comment on this page", "add feedback to these pages")
+The agent will:
 
-Claude will:
-
-1. Inject the feedback library tags into every `*.html` in the current directory.
+1. Inject the feedback library tags into every `*.html` in the target directory.
 2. Create `feedback/inbox.jsonl` and `feedback/history.json`.
-3. Pick a free port (5050 by default, falls back if taken).
+3. Pick a free port (5050 by default).
 4. Start the server in the background.
-5. Tell you the URL to open.
-6. Start monitoring the inbox so any comment you leave gets picked up immediately.
+5. Tell you the URL to open (`http://127.0.0.1:5050/...`).
+6. Watch `feedback/inbox.jsonl` in the same session and iterate on feedback.
 
-Open the URL. Comment away. Claude edits the page in response.
+Open the URL. Comment away. The agent edits the page; it auto-reloads after `history.json` updates.
+
+### Watching the inbox
+
+- **Claude Code:** `Monitor on path: feedback/inbox.jsonl`
+- **Others:** `bash "$SKILL_ROOT/scripts/watch-inbox.sh" feedback/inbox.jsonl` with `notify_on_output` on `^FEEDBACK_INBOX_CHANGED`
+- **Fallback:** "process my feedback"
+
+See `SKILL.md`.
 
 ### Removing the feedback layer
 
-To get a clean static copy back (no `/lib/` dependencies in the HTML):
-
 ```bash
-python ~/.claude/skills/make-pages-interactive/scripts/inject.py ./your-dir --remove
+SKILL_ROOT="$(python ~/.agents/skills/make-pages-interactive/scripts/skill_root.py)"
+python "$SKILL_ROOT/scripts/inject.py" ./your-dir --remove
 ```
 
-Or say "remove the feedback layer from these pages."
+Or ask the agent to remove the feedback layer.
 
 ---
 
 ## How the server shuts down
 
-The server is designed to never leak — three ways it goes away:
-
-1. **Parent-process death** *(automatic, ~5–10 s)*. The server records its parent PID at startup and polls every 5 s. When the parent dies (e.g., you close the Claude Code window that launched it), the kernel reparents the server to PID 1 — the watchdog notices and calls `os._exit(0)`. Skipped if the server was started detached at launch (parent was already PID 1, e.g. `nohup`).
-
-2. **Idle timeout** *(automatic, default 10 min)*. The page polls `/feedback/history.json` every ~4 s, so any open browser tab keeps the server alive. When no client requests have arrived for `--idle-timeout` seconds (default `600`), the server exits. Pass `--idle-timeout 0` to disable.
-
-3. **Manual stop**. Either:
-   - Say "stop the feedback server" in your Claude Code session — Claude runs `lsof -ti:5050 | xargs kill` (adjust the port if you used a non-default one).
-   - Or hit `Ctrl-C` in the terminal where the server is logging.
-
-You generally don't need to think about this. The auto-shutdowns mean abandoned servers self-clean — close your Claude window and within ~10 s the port is free again.
+1. **Parent-process death** *(automatic, ~5–10 s)* — when the shell that launched the server exits.
+2. **Idle timeout** *(default 10 min)* — no browser tabs polling keeps the server alive.
+3. **Manual stop** — `lsof -ti:5050 | xargs kill` or ask the agent to stop the server.
 
 ---
 
 ## Comment types
 
-The library supports three commenting modes:
+- **Text selection** — highlight any text, click "comment".
+- **Element selection** — click "select element", then click a block (image, table, section).
+- **Page-level** — "+ general" for notes not tied to a region.
 
-- **Text selection** — highlight any text, a popup offers "comment on selection".
-- **Element selection** — click the "select element" tool, then click an image, table, section. Comment is anchored to a stable selector.
-- **Page-level** — a floating button leaves notes that aren't tied to any specific element.
-
-Each comment carries a stable `cf_id`, a selector describing what was pointed at, the comment body, and a timestamp. The library batches comments client-side and submits as a single POST so Claude responds to a coherent set rather than firing on every keystroke.
+Comments batch client-side into one POST so the agent responds to a coherent set.
 
 ---
 
-## When Claude responds
+## When the agent responds
 
-When you submit a batch:
-
-1. A "processing…" banner appears at the top of the page.
-2. Your tab title changes to `🔔 …` so you can see progress in a backgrounded tab.
-3. Claude edits the relevant HTML, appends an entry to `feedback/history.json` that maps your comment ids → the changes made.
-4. The page polls `history.json` every ~4 seconds, notices the new entry, and auto-reloads — preserving your scroll position.
-5. Post-reload, a walkthrough appears highlighting each changed region with the title Claude gave it. Press `R` to dismiss; the changes stay in the history sidebar.
+1. A "processing…" banner appears.
+2. Tab title shows `⏳` while waiting, `🔔` when changes are ready.
+3. The agent edits HTML and appends to `feedback/history.json`.
+4. The page polls, auto-reloads (scroll preserved), and offers a walkthrough of changes.
 
 ---
 
@@ -145,29 +143,23 @@ When you submit a batch:
 
 ```
 make-pages-interactive/
-├── SKILL.md              # Agent-facing skill spec
-├── README.md             # This file
-├── screenshot.png        # README screenshot
-├── LICENSE
+├── SKILL.md
+├── README.md
 ├── lib/
 │   ├── feedback.js
 │   ├── feedback.css
 │   └── server.py
 └── scripts/
     ├── inject.py
-    └── update.py
+    ├── update.py
+    ├── skill_root.py
+    └── watch-inbox.sh
 ```
-
----
-
-## Why this exists
-
-I kept building long HTML research reports and wanting to leave inline notes on them — "expand this section", "this plot is misleading", "what about edge case X?" — without breaking out of the page to write a separate to-do list. This skill turns that into a one-liner: every page is now a place I can scribble on, and Claude turns the scribbles into edits.
-
-The same workflow works for design docs, generated dashboards, code walkthroughs, anything that lives as HTML.
 
 ---
 
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+Fork of [paraschopra/make-pages-interactive](https://github.com/paraschopra/make-pages-interactive).
