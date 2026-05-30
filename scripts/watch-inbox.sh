@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Emit FEEDBACK_INBOX_CHANGED when inbox.jsonl grows.
 set -euo pipefail
 
 INBOX="${1:?usage: watch-inbox.sh <inbox.jsonl>}"
@@ -11,32 +10,24 @@ if [[ ! -f "$INBOX" ]]; then
 fi
 
 file_size() {
-  local n
-  n=$(stat -f%z "$1" 2>/dev/null) && { echo "$n"; return; }
-  n=$(stat -c%s "$1" 2>/dev/null) && { echo "$n"; return; }
-  echo 0
+  stat -f%z "$1" 2>/dev/null || stat -c%s "$1" 2>/dev/null || echo 0
 }
 
 emit_if_grown() {
-  local cur last=$1
+  local cur
   cur=$(file_size "$INBOX")
-  if [[ "$cur" -gt "$last" ]]; then
-    echo "FEEDBACK_INBOX_CHANGED $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    echo "$cur"
-  else
-    echo "$last"
-  fi
+  (( cur > last )) || return 0
+  last=$cur
+  echo "FEEDBACK_INBOX_CHANGED $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 }
 
 last=$(file_size "$INBOX")
 
 if command -v fswatch >/dev/null 2>&1; then
-  while read -r _; do
-    last=$(emit_if_grown "$last")
-  done < <(fswatch -l 0.5 "$INBOX")
+  while read -r _; do emit_if_grown; done < <(fswatch -l 0.5 "$INBOX")
 else
   while true; do
     sleep "$POLL_SECONDS"
-    last=$(emit_if_grown "$last")
+    emit_if_grown
   done
 fi

@@ -200,8 +200,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("artifact_dir", help="directory containing the HTML artifact")
     ap.add_argument("--port", type=int, default=5050)
-    ap.add_argument("--bind", default="127.0.0.1",
-                    help="address to bind (default 127.0.0.1). Use 0.0.0.0 for LAN access.")
+    ap.add_argument("--bind", default="127.0.0.1", help="address to bind")
     ap.add_argument("--idle-timeout", type=int, default=600,
                     help="exit if no client requests for this many seconds (0 = disable). Default 600 (10 min).")
     args = ap.parse_args()
@@ -248,13 +247,11 @@ def main():
 
     with srv:
         print(f"[server] serving {artifact_dir}")
-        host = args.bind if args.bind not in ("", "0.0.0.0") else "127.0.0.1"
-        print(f"[server] open http://{host}:{args.port}/")
+        display_host = "127.0.0.1" if args.bind == "0.0.0.0" else args.bind
+        print(f"[server] open http://{display_host}:{args.port}/")
         print(f"[server] inbox:   {inbox}")
         print(f"[server] history: {history}")
-        print(f"[server] info:    http://{host}:{args.port}/info")
-        if args.bind == "0.0.0.0":
-            print(f"[server] WARNING: bound to all interfaces — reachable on your LAN")
+        print(f"[server] info:    http://{display_host}:{args.port}/info")
         if args.idle_timeout > 0:
             print(f"[server] auto-shutdown: parent-death OR {args.idle_timeout}s idle (no requests). --idle-timeout 0 to disable")
         else:

@@ -48,7 +48,7 @@ Plus glue:
 | `SKILL.md` | Agent-facing spec (setup, watch inbox, process feedback). |
 | `scripts/inject.py` | Idempotently injects (or removes) the two `<link>`/`<script>` tags in every `*.html` in a directory. |
 | `scripts/watch-inbox.sh` | Portable inbox watcher (`fswatch` or poll) for agents without a native file monitor. |
-| `scripts/skill_root.py` | Prints the skill install path for agent-agnostic commands. |
+| `scripts/skill_root.py` | Prints the skill install path. |
 | `scripts/update.py` | `git pull --ff-only` inside the skill directory. |
 
 ---
