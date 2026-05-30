@@ -95,15 +95,11 @@ Open the URL. Comment away. The agent edits the page; it auto-reloads after `his
 
 ### Watching the inbox
 
-```bash
-bash scripts/watch-inbox.sh ./your-dir/feedback/inbox.jsonl
-```
+- **Claude Code:** `Monitor on path: feedback/inbox.jsonl`
+- **Others:** `bash "$SKILL_ROOT/scripts/watch-inbox.sh" feedback/inbox.jsonl` with `notify_on_output` on `^FEEDBACK_INBOX_CHANGED`
+- **Fallback:** "process my feedback"
 
-In Cursor: `notify_on_output` on `FEEDBACK_INBOX_CHANGED` → process → re-arm watcher.
-
-Fallback: say **"process my feedback"**.
-
-See `SKILL.md` for details.
+See `SKILL.md`.
 
 ### Removing the feedback layer
 

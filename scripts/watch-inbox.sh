@@ -10,28 +10,33 @@ if [[ ! -f "$INBOX" ]]; then
   while [[ ! -f "$INBOX" ]]; do sleep "$POLL_SECONDS"; done
 fi
 
-emit() {
-  echo "FEEDBACK_INBOX_CHANGED $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+file_size() {
+  local n
+  n=$(stat -f%z "$1" 2>/dev/null) && { echo "$n"; return; }
+  n=$(stat -c%s "$1" 2>/dev/null) && { echo "$n"; return; }
+  echo 0
 }
 
-file_size() {
-  if stat -f%z "$1" >/dev/null 2>&1; then
-    stat -f%z "$1"
+emit_if_grown() {
+  local cur last=$1
+  cur=$(file_size "$INBOX")
+  if [[ "$cur" -gt "$last" ]]; then
+    echo "FEEDBACK_INBOX_CHANGED $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "$cur"
   else
-    stat -c%s "$1"
+    echo "$last"
   fi
 }
 
+last=$(file_size "$INBOX")
+
 if command -v fswatch >/dev/null 2>&1; then
-  fswatch -l 0.5 "$INBOX" | while read -r _; do emit; done
+  while read -r _; do
+    last=$(emit_if_grown "$last")
+  done < <(fswatch -l 0.5 "$INBOX")
 else
-  last=$(file_size "$INBOX" 2>/dev/null || echo 0)
   while true; do
     sleep "$POLL_SECONDS"
-    cur=$(file_size "$INBOX" 2>/dev/null || echo 0)
-    if [[ "$cur" -gt "$last" ]]; then
-      emit
-      last=$cur
-    fi
+    last=$(emit_if_grown "$last")
   done
 fi
