@@ -1,4 +1,4 @@
-/* Claude Feedback — drop-in styles. All class names prefixed with cf- to avoid
+/* In-page feedback — drop-in styles. All class names prefixed with cf- to avoid
    collisions with host-page CSS. */
 
 #claude-feedback-root,
@@ -193,7 +193,7 @@
 }
 
 #cf-history-list:empty::after {
-  content: "No previous batches yet. After Claude processes a batch of feedback, the changes will appear here.";
+  content: "No previous batches yet. After the agent processes a batch of feedback, the changes will appear here.";
 }
 
 .cf-comment-item {
