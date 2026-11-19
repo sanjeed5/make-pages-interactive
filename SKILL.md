@@ -49,3 +49,6 @@ On wake: process feedback → **re-arm watcher** (one-shot). Fallback: **"proces
 
 - Serve via `server.py` (not `file://`)
 - Stay in session while the user is reviewing
+- Pages with their own key or click handlers (slide decks) swallow comment typing and turn text selection into "next slide". In the page's handlers, ignore keydown from input/textarea/contenteditable, and skip click-advance while `#claude-feedback-root` exists or text is selected.
+- Comments sit in the browser until the user clicks **submit batch**. If the user says they sent one but `inbox.jsonl` is empty, point them to that button.
+- Before committing, either strip the tags with `--remove` or tell the user that the committed file only works through the server.
