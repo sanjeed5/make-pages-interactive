@@ -52,3 +52,5 @@ On wake: process feedback → **re-arm watcher** (one-shot). Fallback: **"proces
 - Pages with their own key or click handlers (slide decks) swallow comment typing and turn text selection into "next slide". In the page's handlers, ignore keydown from input/textarea/contenteditable, and skip click-advance while `#claude-feedback-root` exists or text is selected.
 - Comments sit in the browser until the user clicks **submit batch**. If the user says they sent one but `inbox.jsonl` is empty, point them to that button.
 - Before committing, either strip the tags with `--remove` or tell the user that the committed file only works through the server.
+- Claude Code's Monitor expires after 30 minutes at most. Re-arm it on the expiry notice, and compare `inbox.jsonl` with `history.json` first in case a batch landed in the gap.
+- A comment answered in chat with no page change still needs a `history.json` entry, or it shows as pending forever.
